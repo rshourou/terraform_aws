@@ -15,5 +15,5 @@ variable "region" {
 }
 
 variable "availability_zones" {
-    type = string  
+    type = list  
 }
