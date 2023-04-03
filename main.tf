@@ -92,3 +92,57 @@ resource "aws_instance" "dev_node" {
     Name = "dev_node"
   }
 }
+
+resource "aws_instance" "my_server" {
+  ami                    = data.aws_ami.server_ami.id
+  instance_type          = var.instance_type
+  key_name               = aws_key_pair.mtc_auth.id
+  vpc_security_group_ids = [aws_security_group.mtc_sg.id]
+  user_data =file("userdata.tpl")
+
+  provisioner "local-exec" {
+    command = "echo ${self.private_ip} >> private_ips.txt"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "echo ${self.private_ip} >> /home/ec2-user/private_ips.txt"
+    ]
+  }
+
+  provisioner "file" {
+    content     = "ami used : ${self.ami}"
+    destination = "/home/ec2-user/barsoon.txt"
+  }
+
+  connection {
+    type        = "ssh"
+    user        = "ec2-user"
+    private_key = file("~/.ssh/terraform")
+    host        = self.public_ip
+  }
+
+  tags = {
+    Name = "${local.proj_name}_Server"
+  }
+}
+
+resource "null_resource" "status" {
+    provisioner "local-exec"{
+        command = "aws ec2 wait instance-status-ok --instance-ids ${aws_instance.my-server.id} "
+    }
+    depends_on =[aws_instance.my-server]
+  }
+
+  resource "aws_s3_bucket" "bucket" {
+  bucket = "roya-tf-test-bucket"
+  depends_on = [
+    aws_instance.my_server
+  ]
+
+  tags = {
+    Name        = "My bucket"
+    Environment = "Dev"
+  }
+
+}
