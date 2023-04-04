@@ -12,54 +12,32 @@ locals {
   ]
 }
 
-resource "aws_vpc" "mtc_vpc" {
-  cidr_block           = "10.123.0.0/16"
+module "mtc_vpc" {
+  source = "terraform-aws-modules/vpc/aws"
+
+  name = "mtc_vpc"
+  cidr = "10.0.0.0/16"
+
+  azs             = var.availability_zones
+  private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
+
+  enable_nat_gateway = true
+  enable_vpn_gateway = true
   enable_dns_hostnames = true
   enable_dns_support   = true
   tags = {
-    Name = local.proj_name
+    Terraform = "true"
+    Environment = "dev"
   }
 }
 
-resource "aws_subnet" "mtc_public_subnet" {
-  vpc_id                  = aws_vpc.mtc_vpc.id
-  cidr_block              = "10.123.1.0/24"
-  map_public_ip_on_launch = true
-  availability_zone       = var.availability_zones[0]
-  tags = {
-    Name = "${local.proj_name}_publuc"
-  }
-}
 
-resource "aws_internet_gateway" "mtc_internet_gateway" {
-  vpc_id = aws_vpc.mtc_vpc.id
-  tags = {
-    Name = "${local.proj_name}_igw"
-  }
-}
-
-resource "aws_route_table" "mtc_public_rt" {
-  vpc_id = aws_vpc.mtc_vpc.id
-  tags = {
-    Name = "${local.proj_name}_public_rt"
-  }
-}
-
-resource "aws_route" "default_route" {
-  route_table_id         = aws_route_table.mtc_public_rt.id
-  destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = aws_internet_gateway.mtc_internet_gateway.id
-}
-
-resource "aws_route_table_association" "mtc_public_assoc" {
-  subnet_id      = aws_subnet.mtc_public_subnet.id
-  route_table_id = aws_route_table.mtc_public_rt.id
-}
 
 resource "aws_security_group" "mtc_sg" {
   name        = "${local.proj_name}_sg"
   description = "Allow TLS inbound traffic"
-  vpc_id      = aws_vpc.mtc_vpc.id
+  vpc_id      = module.mtc_vpc.id
   
   dynamic "ingress" {
     for_each = local.ingress_rules
@@ -95,9 +73,7 @@ resource "aws_instance" "dev_node" {
   instance_type = "t3.micro"
   key_name               = aws_key_pair.mtc_auth.id
   vpc_security_group_ids = [aws_security_group.mtc_sg.id]
-  subnet_id              = aws_subnet.mtc_public_subnet.id
   user_data =file("userdata.tpl")
-
   root_block_device {
     volume_size = 10
   }
